@@ -6,6 +6,7 @@ Uso:
 import argparse
 import time
 import pyspark.sql.functions as sf
+from pyspark.sql.types import StructType, StructField, IntegerType, StringType
 from pyspark.sql import SparkSession, Window
 
 
@@ -24,8 +25,15 @@ def run(spark, data_folder, output_folder):
     trips_path = f"{data_folder}/yellow_tripdata_*.parquet"
     zones_path = f"{data_folder}/taxi_zone_lookup.csv"
 
+    zones_schema = StructType([
+        StructField("LocationID", IntegerType(), False),
+        StructField("Borough", StringType(), False),
+        StructField("Zone", StringType(), False),
+        StructField("service_zone", StringType(), False),
+    ])
+
     zones_df = (spark.read.option("header", "true")
-                .option("inferSchema", "true")
+                .schema(zones_schema)
                 .csv(zones_path))
 
     raw_df = spark.read.parquet(trips_path)
