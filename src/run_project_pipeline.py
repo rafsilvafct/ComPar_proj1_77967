@@ -44,12 +44,6 @@ def run(spark, data_folder, output_folder):
         sf.col("Borough").alias("pickup_borough"), 
         sf.col("Zone").alias("pickup_zone")
     )
-    
-    dropoff_zones = zones_df.select(
-        sf.col("LocationID").alias("do_loc_id"), 
-        sf.col("Borough").alias("dropoff_borough"), 
-        sf.col("Zone").alias("dropoff_zone")
-    )
 
     # Base de dados limpa e enriquecida com colunas temporais e zonas já associadas
     base_df = (raw_df.filter(
@@ -66,7 +60,6 @@ def run(spark, data_folder, output_folder):
         .withColumn("hour_of_day", sf.hour("tpep_pickup_datetime"))
         .withColumn("trip_duration_mins", (sf.unix_timestamp("tpep_dropoff_datetime") - sf.unix_timestamp("tpep_pickup_datetime")) / 60.0)
         .join(pickup_zones, sf.col("PULocationID") == sf.col("pu_loc_id"), "inner")
-        .join(dropoff_zones, sf.col("DOLocationID") == sf.col("do_loc_id"), "inner")
         .cache()
     )
 
