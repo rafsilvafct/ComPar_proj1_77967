@@ -74,9 +74,9 @@ def run(spark, data_folder, output_folder):
     base_df.count()
 
     # -------------------------------------------------------------------------
-    # M2 - Temporal demand analysis[cite: 3, 4]
+    # M2
     # -------------------------------------------------------------------------
-    print("A executar M2: Análise de Procura Temporal...")
+    print("A executar M2")
     (base_df
         .groupBy("pickup_borough", "day_of_week", "hour_of_day")
         .agg(
@@ -91,9 +91,9 @@ def run(spark, data_folder, output_folder):
     )
 
     # -------------------------------------------------------------------------
-    # M3 - Zone-level statistics[cite: 4]
+    # M3
     # -------------------------------------------------------------------------
-    print("A executar M3: Estatísticas ao Nível da Zona...")
+    print("A executar M3")
     zone_month_stats = (base_df
         .groupBy("pickup_zone", "pickup_borough", "month")
         .agg(
@@ -105,54 +105,105 @@ def run(spark, data_folder, output_folder):
         )
     )
 
-    w_borough = Window.partitionBy("pickup_borough", "month")
-    w_rolling = Window.partitionBy("pickup_zone").orderBy("month").rowsBetween(-2, 0)
+    w_borough_month = Window.partitionBy("pickup_borough", "month")
+    w_zone_rolling = Window.partitionBy("pickup_borough", "pickup_zone").orderBy("month").rowsBetween(-2, 0)
+    w_borough_rank = Window.partitionBy("pickup_borough", "month")
+    w_borough_rolling_time = Window.partitionBy("pickup_borough").orderBy("month").rowsBetween(-2, 0)
 
-    (zone_month_stats
-        .withColumn("volume_rank", sf.rank().over(w_borough.orderBy(sf.desc("monthly_trip_volume"))))
-        .withColumn("rolling_3m_volume", sf.avg("monthly_trip_volume").over(w_rolling))
-        .write.mode("overwrite")
-        .parquet(f"{output_folder}/m3_zone_stats")
-    )
-
-    # -------------------------------------------------------------------------
-    # O1 - Fare anomaly detection[cite: 4]
-    # -------------------------------------------------------------------------
-    print("A executar O1: Deteção de Anomalias nas Tarifas...")
-    df_o1 = base_df.withColumn("fare_per_km", sf.col("fare_amount") / sf.col("trip_distance"))
-    
-    o1_bucket_stats = (df_o1
-        .groupBy("PULocationID", "hour_of_day")
-        .agg(
-            sf.avg("fare_per_km").alias("mean_fpk"),
-            sf.stddev("fare_per_km").alias("std_fpk")
-        )
-    )
-    
-    (df_o1.join(o1_bucket_stats, ["PULocationID", "hour_of_day"])
-        .withColumn("is_anomaly", sf.col("fare_per_km") > (sf.col("mean_fpk") + 3 * sf.col("std_fpk")))
-        .write.mode("overwrite")
-        .parquet(f"{output_folder}/o1_fare_anomalies")
+    f = (zone_month_stats
+         .withColumn("borough_monthly_volume", sf.sum("monthly_trip_volume").over(w_borough_month))
+         .withColumn("volume_rank", sf.rank().over(w_borough_rank.orderBy(sf.desc("monthly_trip_volume"))))
+         .withColumn("rolling_3m_zone_volume", sf.sum("monthly_trip_volume").over(w_zone_rolling))
+         .withColumn("rolling_3m_borough_volume", sf.sum("borough_monthly_volume").over(w_borough_rolling_time))
+         .withColumn("rolling_3m_trip_share", sf.col("rolling_3m_zone_volume") / sf.col("rolling_3m_borough_volume"))
+         .withColumn("rolling_mean_volume", sf.avg("monthly_trip_volume").over(w_zone_rolling))
+         .withColumn("rolling_stddev_volume", sf.stddev("monthly_trip_volume").over(w_zone_rolling))
+         .withColumn("is_volume_deviating", sf.when(
+            sf.col("rolling_stddev_volume").isNotNull() & (sf.col("rolling_stddev_volume") > 0),
+            sf.abs(sf.col("monthly_trip_volume") - sf.col("rolling_mean_volume")) > (1.5 * sf.col("rolling_stddev_volume"))
+        ).otherwise(False))
     )
 
+    f.show()
+
     # -------------------------------------------------------------------------
-    # O2 - Origin-destination flow analysis[cite: 4]
+    # O1
     # -------------------------------------------------------------------------
-    print("A executar O2: Análise de Fluxos Origem-Destino...")
-    od_flows = (base_df
-        .groupBy("month", "PULocationID", "DOLocationID", "pickup_borough", "dropoff_borough")
-        .agg(sf.count("*").alias("route_trip_count"))
-    )
-    
-    w_outbound = Window.partitionBy("PULocationID", "month")
-    (od_flows
-        .withColumn("total_outbound", sf.sum("route_trip_count").over(w_outbound))
-        .withColumn("route_share", sf.col("route_trip_count") / sf.col("total_outbound"))
-        .write.mode("overwrite")
-        .parquet(f"{output_folder}/o2_od_flows")
+    print("A executar O1")
+    o1_base = base_df.withColumn(
+        "fare_per_dist", sf.col("fare_amount") / sf.col("trip_distance")
+    ).withColumn(
+        "is_weekend",
+        sf.when(sf.col("day_of_week").isin("Sat", "Sun", "Sáb", "Dom"), sf.lit("weekend"))
+        .otherwise(sf.lit("weekday"))
     )
 
-    base_df.unpersist()
+    stats_df = o1_base.groupBy("PULocationID", "hour_of_day").agg(
+        sf.mean("fare_per_dist").alias("mean_fare_per_dist"),
+        sf.stddev_samp("fare_per_dist").alias("std_fare_per_dist")
+    )
+
+    anomalies_df = o1_base.join(
+        stats_df, ["PULocationID", "hour_of_day"], "inner"
+    ).withColumn(
+        "is_anomaly",
+        sf.when(
+            (sf.col("std_fare_per_dist").isNotNull()) &
+            (sf.col("std_fare_per_dist") > 0) &
+            (sf.col("fare_per_dist") > (sf.col("mean_fare_per_dist") + 30 * sf.col("std_fare_per_dist"))),
+            1
+        ).otherwise(0)
+    )
+
+    o1_result = anomalies_df.groupBy(
+        "pickup_borough",
+        "payment_type",
+        "is_weekend"
+    ).agg(
+        sf.count("*").alias("total_trips"),
+        sf.sum("is_anomaly").alias("anomaly_count"),
+        (sf.sum("is_anomaly") / sf.count("*")).alias("anomaly_rate")
+    )
+
+    o1_result.show()
+
+    # -------------------------------------------------------------------------
+    # O4
+    # -------------------------------------------------------------------------
+    print("A executar O4")
+    enriched_df = (base_df
+                   .withColumn("is_airport", sf.when(sf.col("RatecodeID").isin([2, 3]), 1).otherwise(0))
+                   .withColumn("is_negotiated", sf.when(sf.col("RatecodeID") == 5, 1).otherwise(0))
+                   .withColumn("is_group", sf.when(sf.col("passenger_count") >= 4, 1).otherwise(0)))
+
+    bucket_stats_df = enriched_df.groupBy("PULocationID", "hour_of_day").agg(
+        sf.count("*").alias("total_bucket_trips"),
+        sf.avg("is_airport").alias("frac_airport"),
+        sf.avg("is_negotiated").alias("frac_negotiated"),
+        sf.avg("is_group").alias("frac_group")
+    )
+
+    classified_buckets_df = bucket_stats_df.withColumn(
+        "zone_type",
+        sf.when(sf.col("frac_airport") > 0.3, "transit")
+        .when(sf.col("frac_negotiated") > 0.2, "commercial")
+        .when(sf.col("frac_group") > 0.15, "residential")
+        .otherwise("mixed")
+    )
+
+    final_o4_df = enriched_df.join(
+        classified_buckets_df.select("PULocationID", "hour_of_day", "zone_type"),
+        on=["PULocationID", "hour_of_day"],
+        how="inner"
+    )
+
+    o4_monthly_stats = final_o4_df.groupBy("zone_type", "month").agg(
+        sf.avg("fare_amount").alias("mean_fare"),
+        sf.avg("trip_distance").alias("mean_distance"),
+        sf.count("*").alias("total_trips")
+    )
+
+    o4_monthly_stats.show()
     print("--- Pipeline Base Executado com Sucesso! ---")
 
 
