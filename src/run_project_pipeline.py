@@ -150,7 +150,7 @@ def run(spark, data_folder, output_folder):
         sf.when(
             (sf.col("std_fare_per_dist").isNotNull()) &
             (sf.col("std_fare_per_dist") > 0) &
-            (sf.col("fare_per_dist") > (sf.col("mean_fare_per_dist") + 30 * sf.col("std_fare_per_dist"))),
+            (sf.col("fare_per_dist") > (sf.col("mean_fare_per_dist") + 3.0 * sf.col("std_fare_per_dist"))),
             1
         ).otherwise(0)
     )
