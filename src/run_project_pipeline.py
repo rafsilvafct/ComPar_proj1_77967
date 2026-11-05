@@ -45,6 +45,44 @@ def run(spark, data_folder, output_folder):
         sf.col("Zone").alias("pickup_zone")
     )
 
+    # -------------------------------------------------------------------------
+    # report per-year cleaning statistics
+    # -------------------------------------------------------------------------
+
+    df_with_year = raw_df.withColumn("year", sf.year("tpep_pickup_datetime"))
+    cleaning_stats = df_with_year.groupBy("year").agg(
+        sf.count("*").alias("total_initial_records"),
+        sf.sum(sf.when(sf.col("fare_amount") <= 0, 1).otherwise(0)).alias(
+            "removed_fare_amount"
+        ),
+        sf.sum(sf.when(sf.col("trip_distance") <= 0, 1).otherwise(0)).alias(
+            "removed_trip_distance"
+        ),
+        sf.sum(
+            sf.when(
+                (sf.col("passenger_count") == 0)
+                | (sf.col("passenger_count") > 6),
+                1,
+            ).otherwise(0)
+        ).alias("removed_passenger_count"),
+        sf.sum(
+            sf.when(
+                sf.col("tpep_dropoff_datetime")
+                <= sf.col("tpep_pickup_datetime"),
+                1,
+            ).otherwise(0)
+        ).alias("removed_dates"),
+        sf.sum(
+            sf.when(
+                ~sf.col("PULocationID").between(1, 263)
+                | ~sf.col("DOLocationID").between(1, 263),
+                1,
+            ).otherwise(0)
+        ).alias("removed_locations"),
+    )
+
+    cleaning_stats.show(truncate=False)
+
     # Base de dados limpa e enriquecida com colunas temporais e zonas já associadas
     base_df = (raw_df.filter(
             (sf.col("fare_amount") > 0) &
