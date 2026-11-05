@@ -67,7 +67,11 @@ def run(spark, data_folder, output_folder):
         .withColumn("trip_duration_mins", (sf.unix_timestamp("tpep_dropoff_datetime") - sf.unix_timestamp("tpep_pickup_datetime")) / 60.0)
         .join(pickup_zones, sf.col("PULocationID") == sf.col("pu_loc_id"), "inner")
         .join(dropoff_zones, sf.col("DOLocationID") == sf.col("do_loc_id"), "inner")
+        .cache()
     )
+
+    #Para obrigar a ir para a cache
+    base_df.count()
 
     # -------------------------------------------------------------------------
     # M2 - Temporal demand analysis[cite: 3, 4]
@@ -148,6 +152,7 @@ def run(spark, data_folder, output_folder):
         .parquet(f"{output_folder}/o2_od_flows")
     )
 
+    base_df.unpersist()
     print("--- Pipeline Base Executado com Sucesso! ---")
 
 
