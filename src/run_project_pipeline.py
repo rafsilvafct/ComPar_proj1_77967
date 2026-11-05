@@ -59,7 +59,7 @@ def run(spark, data_folder, output_folder):
         .withColumn("day_of_week", sf.date_format("tpep_pickup_datetime", "E"))
         .withColumn("hour_of_day", sf.hour("tpep_pickup_datetime"))
         .withColumn("trip_duration_mins", (sf.unix_timestamp("tpep_dropoff_datetime") - sf.unix_timestamp("tpep_pickup_datetime")) / 60.0)
-        .join(pickup_zones, sf.col("PULocationID") == sf.col("pu_loc_id"), "inner")
+        .join(pickup_zones.hint("broadcast"), sf.col("PULocationID") == sf.col("pu_loc_id"), "inner")
         .select("passenger_count", "trip_distance", "RatecodeID", "PULocationID", "DOLocationID", "payment_type",
                 "fare_amount", "month", "day_of_week", "hour_of_day", "trip_duration_mins", "pickup_borough", "pickup_zone")
         .cache()
