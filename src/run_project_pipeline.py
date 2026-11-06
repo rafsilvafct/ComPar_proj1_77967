@@ -208,7 +208,8 @@ def run(spark, data_folder, output_folder):
     enriched_df = (base_df
                    .withColumn("is_airport", sf.when(sf.col("RatecodeID").isin([2, 3]), 1).otherwise(0))
                    .withColumn("is_negotiated", sf.when(sf.col("RatecodeID") == 5, 1).otherwise(0))
-                   .withColumn("is_group", sf.when(sf.col("passenger_count") >= 4, 1).otherwise(0)))
+                   .withColumn("is_group", sf.when(sf.col("passenger_count") >= 4, 1).otherwise(0))
+                   .select("trip_distance", "PULocationID", "fare_amount", "month", "hour_of_day", "is_airport", "is_negotiated", "is_group"))
 
     bucket_stats_df = enriched_df.groupBy("PULocationID", "hour_of_day").agg(
         sf.count("*").alias("total_bucket_trips"),
