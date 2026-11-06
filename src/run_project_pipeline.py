@@ -21,7 +21,11 @@ def build_arg_parser():
 
 def run(spark, data_folder, output_folder):
     print("--- A carregar dados e a preparar o pipeline ---")
-    
+
+    spark.conf.set("spark.sql.adaptive.enabled", "true")
+    spark.conf.set("spark.sql.adaptive.skewJoin.enabled", "true")
+
+
     trips_path = f"{data_folder}/yellow_tripdata_*.parquet"
     zones_path = f"{data_folder}/taxi_zone_lookup.csv"
 
