@@ -227,7 +227,7 @@ def run(spark, data_folder, output_folder):
     )
 
     final_o4_df = enriched_df.join(
-        classified_buckets_df.select("PULocationID", "hour_of_day", "zone_type"),
+        classified_buckets_df.select("PULocationID", "hour_of_day", "zone_type").hint("broadcast"),
         on=["PULocationID", "hour_of_day"],
         how="inner"
     )
