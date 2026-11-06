@@ -173,7 +173,7 @@ def run(spark, data_folder, output_folder):
         "is_weekend",
         sf.when(sf.col("day_of_week").isin("Sat", "Sun", "Sáb", "Dom"), sf.lit("weekend"))
         .otherwise(sf.lit("weekday"))
-    )
+    ).select("PULocationID", "pickup_borough", "payment_type", "is_weekend", "fare_per_dist", "hour_of_day")
 
     stats_df = o1_base.groupBy("PULocationID", "hour_of_day").agg(
         sf.mean("fare_per_dist").alias("mean_fare_per_dist"),
@@ -190,7 +190,7 @@ def run(spark, data_folder, output_folder):
             (sf.col("fare_per_dist") > (sf.col("mean_fare_per_dist") + 3.0 * sf.col("std_fare_per_dist"))),
             1
         ).otherwise(0)
-    )
+    ).select("pickup_borough", "payment_type", "is_weekend", "is_anomaly")
 
     o1_result = anomalies_df.groupBy(
         "pickup_borough",
