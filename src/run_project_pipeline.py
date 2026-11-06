@@ -175,22 +175,19 @@ def run(spark, data_folder, output_folder):
         .otherwise(sf.lit("weekday"))
     ).select("PULocationID", "pickup_borough", "payment_type", "is_weekend", "fare_per_dist", "hour_of_day")
 
-    stats_df = o1_base.groupBy("PULocationID", "hour_of_day").agg(
-        sf.mean("fare_per_dist").alias("mean_fare_per_dist"),
-        sf.stddev_samp("fare_per_dist").alias("std_fare_per_dist")
-    )
-
-    anomalies_df = o1_base.join(
-        stats_df, ["PULocationID", "hour_of_day"], "inner"
-    ).withColumn(
-        "is_anomaly",
-        sf.when(
-            (sf.col("std_fare_per_dist").isNotNull()) &
-            (sf.col("std_fare_per_dist") > 0) &
-            (sf.col("fare_per_dist") > (sf.col("mean_fare_per_dist") + 3.0 * sf.col("std_fare_per_dist"))),
-            1
-        ).otherwise(0)
-    ).select("pickup_borough", "payment_type", "is_weekend", "is_anomaly")
+    window = Window.partitionBy("PULocationID", "hour_of_day")
+    anomalies_df = (o1_base
+        .withColumn("mean_fare_per_dist", sf.mean("fare_per_dist").over(window))
+        .withColumn("std_fare_per_dist", sf.stddev("fare_per_dist").over(window))
+        .withColumn("is_anomaly",
+                    sf.when(
+                        (sf.col("std_fare_per_dist").isNotNull()) &
+                        (sf.col("std_fare_per_dist") > 0) &
+                        (sf.col("fare_per_dist") > (
+                                    sf.col("mean_fare_per_dist") + 3.0 * sf.col("std_fare_per_dist"))),
+                        1
+                    ).otherwise(0)
+    ).select("pickup_borough", "payment_type", "is_weekend", "is_anomaly"))
 
     o1_result = anomalies_df.groupBy(
         "pickup_borough",
