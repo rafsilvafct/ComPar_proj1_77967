@@ -131,7 +131,8 @@ def run(spark, data_folder, output_folder):
     # M3
     # -------------------------------------------------------------------------
     print("A executar M3")
-    zone_month_stats = (base_df
+    base_df_m3 = base_df.select("pickup_zone", "pickup_borough", "month", "fare_amount", "trip_distance")
+    zone_month_stats = (base_df_m3
         .groupBy("pickup_zone", "pickup_borough", "month")
         .agg(
             sf.avg("fare_amount").alias("mean_fare"),
