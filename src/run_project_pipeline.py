@@ -253,6 +253,9 @@ def main():
              .config("spark.ui.showConsoleProgress", "false")
              .getOrCreate())
 
+    sc = spark.sparkContext
+    sc.setLogLevel("ERROR")
+
     start = time.perf_counter()
     run(spark, args.data, args.output)
     elapsed = time.perf_counter() - start
