@@ -144,12 +144,11 @@ def run(spark, data_folder, output_folder):
 
     w_borough_month = Window.partitionBy("pickup_borough", "month")
     w_zone_rolling = Window.partitionBy("pickup_borough", "pickup_zone").orderBy("month").rowsBetween(-2, 0)
-    w_borough_rank = Window.partitionBy("pickup_borough", "month")
     w_borough_rolling_time = Window.partitionBy("pickup_borough").orderBy("month").rowsBetween(-2, 0)
 
     f = (zone_month_stats
          .withColumn("borough_monthly_volume", sf.sum("monthly_trip_volume").over(w_borough_month))
-         .withColumn("volume_rank", sf.rank().over(w_borough_rank.orderBy(sf.desc("monthly_trip_volume"))))
+         .withColumn("volume_rank", sf.rank().over(w_borough_month.orderBy(sf.desc("monthly_trip_volume"))))
          .withColumn("rolling_3m_zone_volume", sf.sum("monthly_trip_volume").over(w_zone_rolling))
          .withColumn("rolling_3m_borough_volume", sf.sum("borough_monthly_volume").over(w_borough_rolling_time))
          .withColumn("rolling_3m_trip_share", sf.col("rolling_3m_zone_volume") / sf.col("rolling_3m_borough_volume"))
