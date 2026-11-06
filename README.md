@@ -32,7 +32,8 @@ O projeto realiza a limpeza, agregação temporal, estatísticas por zona e aná
 │   ├── project.ipynb
 │   └── spark_profiler.py
 ├── report/
-│   └── relatorio.pdf
+│   ├── relatorio.pdf
+│   └── relatorio.zip
 └── README.md
 ```
 
