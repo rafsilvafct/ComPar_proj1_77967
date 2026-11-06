@@ -211,6 +211,8 @@ def run(spark, data_folder, output_folder):
                    .withColumn("is_group", sf.when(sf.col("passenger_count") >= 4, 1).otherwise(0))
                    .select("trip_distance", "PULocationID", "fare_amount", "month", "hour_of_day", "is_airport", "is_negotiated", "is_group"))
 
+    base_df.unpersist()
+
     bucket_stats_df = enriched_df.groupBy("PULocationID", "hour_of_day").agg(
         sf.count("*").alias("total_bucket_trips"),
         sf.avg("is_airport").alias("frac_airport"),
